@@ -1,0 +1,16 @@
+{
+  "name": "openviking",
+  "description": "OpenViking plugins for CodeBuddy.",
+  "owner": {
+    "name": "OpenViking"
+  },
+  "plugins": [
+    {
+      "name": "openviking-memory",
+      "description": "Long-term semantic memory for CodeBuddy, powered by OpenViking. Auto-recall relevant memories at session start and capture important information during conversations.",
+      "source": "./codebuddy-memory-plugin",
+      "category": "productivity",
+      "version": "0.7.13"
+    }
+  ]
+}

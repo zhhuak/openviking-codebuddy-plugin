@@ -1,0 +1,110 @@
+import test from "node:test";
+import assert from "node:assert/strict";
+import { execFileSync } from "node:child_process";
+import { existsSync, readFileSync } from "node:fs";
+import { dirname, join, resolve } from "node:path";
+import { fileURLToPath } from "node:url";
+
+const scriptsDir = dirname(fileURLToPath(import.meta.url));
+const pluginDir = resolve(scriptsDir, "..");
+const repoRoot = resolve(scriptsDir, "..", "..", "..");
+const rootCatalogPath = join(repoRoot, ".codebuddy-plugin", "marketplace.json");
+const localCatalogPath = join(repoRoot, "examples", ".codebuddy-plugin", "marketplace.json");
+const manifestPath = join(pluginDir, ".codebuddy-plugin", "plugin.json");
+const canonicalExperienceSkillPath = join(repoRoot, "examples", "skills", "ov-experience-memory", "SKILL.md");
+const packagedExperienceSkillPath = join(pluginDir, "skills", "ov-experience-memory", "SKILL.md");
+
+const PLUGIN_NAME = "openviking-memory";
+
+function readJson(path) {
+  return JSON.parse(readFileSync(path, "utf-8"));
+}
+
+test("repo-root CodeBuddy marketplace catalog uses a relative directory source", () => {
+  assert.ok(existsSync(rootCatalogPath), `missing catalog at ${rootCatalogPath}`);
+  const catalog = readJson(rootCatalogPath);
+  assert.equal(catalog.name, "openviking");
+  const entry = catalog.plugins?.find((p) => p?.name === PLUGIN_NAME);
+  assert.ok(entry, `root catalog must contain ${PLUGIN_NAME}`);
+  // A relative directory source installs the checkout verbatim, which is what
+  // registers the full MCP/skills surface; a git-subdir source staged only part
+  // of it. Keep the two catalog shapes in step with the installers.
+  assert.equal(entry.source, "./examples/codebuddy-memory-plugin");
+});
+
+test("local CodeBuddy marketplace entry name matches plugin manifest", () => {
+  const catalog = readJson(localCatalogPath);
+  const manifest = readJson(manifestPath);
+  // Same marketplace name in remote and directory mode keeps the plugin id
+  // (openviking-memory@openviking) stable across install modes.
+  assert.equal(catalog.name, "openviking");
+  const entry = catalog.plugins?.find((p) => p?.name === PLUGIN_NAME);
+  assert.ok(entry, `local catalog must contain ${PLUGIN_NAME}`);
+  assert.equal(entry.name, manifest.name);
+  assert.equal(entry.source, "./codebuddy-memory-plugin");
+});
+
+test("marketplace package ships the canonical Experience skill", () => {
+  assert.ok(existsSync(packagedExperienceSkillPath), "CodeBuddy plugin must package the Experience skill");
+  assert.equal(
+    readFileSync(packagedExperienceSkillPath, "utf-8"),
+    readFileSync(canonicalExperienceSkillPath, "utf-8"),
+    "packaged Experience skill must stay byte-identical to examples/skills/ov-experience-memory",
+  );
+});
+
+test("marketplace package ships the canonical OpenViking skills skill", () => {
+  const packaged = join(pluginDir, "skills", "openviking-skills", "SKILL.md");
+  assert.ok(existsSync(packaged), "CodeBuddy plugin must package the openviking-skills skill");
+  assert.equal(
+    readFileSync(packaged, "utf-8"),
+    readFileSync(join(repoRoot, "examples", "skills", "openviking-skills", "SKILL.md"), "utf-8"),
+    "packaged skill must stay byte-identical to examples/skills/openviking-skills",
+  );
+});
+
+test("CodeBuddy .mcp.json starts the stdio MCP proxy", () => {
+  const mcp = readJson(join(pluginDir, ".mcp.json"));
+  const server = mcp.openviking;
+  assert.ok(server, ".mcp.json must define openviking server");
+  assert.equal(server.command, "node");
+  assert.deepEqual(server.args, ["${CODEBUDDY_PLUGIN_ROOT}/servers/mcp-proxy.mjs"]);
+  assert.ok(!("type" in server), ".mcp.json should not keep HTTP MCP type");
+  assert.ok(!("url" in server), ".mcp.json should not keep direct HTTP url");
+  execFileSync("node", ["--check", join(pluginDir, "servers", "mcp-proxy.mjs")], { stdio: "pipe" });
+});
+
+test("CodeBuddy hooks include optional skill experience PostToolUse Read hook", () => {
+  const hooks = readJson(join(pluginDir, "hooks", "hooks.json"));
+  const postToolUse = hooks.hooks?.PostToolUse;
+  assert.ok(Array.isArray(postToolUse), "hooks.json must define PostToolUse hooks");
+  const readHook = postToolUse.find((entry) => entry?.matcher === "Read");
+  assert.ok(readHook, "PostToolUse must include a Read matcher");
+  assert.equal(
+    readHook.hooks?.[0]?.command,
+    "node ${CODEBUDDY_PLUGIN_ROOT}/scripts/skill-experience.mjs",
+  );
+  execFileSync("node", ["--check", join(pluginDir, "scripts", "skill-experience.mjs")], { stdio: "pipe" });
+});
+
+test("CodeBuddy hooks include PreToolUse URI guard for file and shell tools", () => {
+  const hooks = readJson(join(pluginDir, "hooks", "hooks.json"));
+  const preToolUse = hooks.hooks?.PreToolUse;
+  assert.ok(Array.isArray(preToolUse), "hooks.json must define PreToolUse hooks");
+  const guardHook = preToolUse.find((entry) => entry?.matcher === "Read|Glob|Grep|Edit|Write|Bash");
+  assert.ok(guardHook, "PreToolUse must guard Read|Glob|Grep|Edit|Write|Bash");
+  assert.equal(
+    guardHook.hooks?.[0]?.command,
+    "node ${CODEBUDDY_PLUGIN_ROOT}/scripts/uri-guard.mjs",
+  );
+  execFileSync("node", ["--check", join(pluginDir, "scripts", "uri-guard.mjs")], { stdio: "pipe" });
+});
+
+test("CodeBuddy plugin ships the memory doctor skill and script", () => {
+  const skill = join(pluginDir, "skills", "ov-memory-doctor", "SKILL.md");
+  assert.ok(existsSync(skill), "missing skills/ov-memory-doctor/SKILL.md");
+  assert.match(readFileSync(skill, "utf-8"), /node \$\{CODEBUDDY_PLUGIN_ROOT\}\/scripts\/ov-memory-doctor\.mjs/);
+  assert.ok(existsSync(join(pluginDir, "skills", "ov-memory-doctor", "reference.md")));
+  execFileSync("node", ["--check", join(pluginDir, "scripts", "ov-memory-doctor.mjs")], { stdio: "pipe" });
+  execFileSync("node", ["--check", join(pluginDir, "scripts", "shared", "doctor-core.mjs")], { stdio: "pipe" });
+});
