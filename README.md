@@ -1,12 +1,18 @@
 # OpenViking CodeBuddy plugin (marketplace)
 
 A standalone CodeBuddy marketplace that ships exactly one plugin:
+
 **openviking-memory** — long-term semantic memory for CodeBuddy, powered by
 [OpenViking](https://github.com/zhhuak/OpenViking).
 
-The plugin source is generated from `examples/codebuddy-memory-plugin/` in the
-OpenViking repository; this repository exists so installing or updating the
-plugin clones a small tree instead of the whole monorepo.
+This repository is generated: `.github/scripts/stage-codebuddy-plugin-marketplace.sh`
+in the OpenViking repository mirrors `examples/codebuddy-memory-plugin` and the
+marketplace manifest here on every change to them. It exists because the
+CodeBuddy client replaces a GitHub marketplace by cloning it again, and cloning
+the whole monorepo trips that client's bulk-delete guard on install and update.
+
+Edits made here are overwritten by the next mirror run — send changes to the
+OpenViking repository instead.
 
 ## Install
 
@@ -22,11 +28,11 @@ codebuddy plugin marketplace update openviking
 codebuddy plugin update openviking-memory@openviking
 ```
 
-`codebuddy plugin list` should then report the plugin version.
+`codebuddy plugin list` reports the version that ended up installed.
 
 ## Layout
 
 ```
-.codebuddy-plugin/marketplace.json   marketplace catalog
-codebuddy-memory-plugin/             the plugin (hooks, MCP proxy, skills)
+.codebuddy-plugin/marketplace.json   marketplace manifest (source: ./codebuddy-memory-plugin)
+codebuddy-memory-plugin/             the plugin (hooks, MCP proxy, skills, scripts)
 ```
